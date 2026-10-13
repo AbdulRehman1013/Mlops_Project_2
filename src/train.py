@@ -45,7 +45,8 @@ def train_and_register(pipeline_stage="dev"):
         mlflow.sklearn.log_model(
             sk_model=reg,
             artifact_path="regression_model",
-            registered_model_name=model_name
+            registered_model_name=model_name,
+            skops_trusted_types=["sklearn.tree._tree.Tree"]
         )
         
         # Pipeline stage ke mutabiq Model Registry Aliases assign karna
