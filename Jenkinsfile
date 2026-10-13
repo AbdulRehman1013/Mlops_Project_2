@@ -1,7 +1,7 @@
 pipeline {
     agent any
     
-   environment {
+    environment {
         PYTHONPATH = "${WORKSPACE}/src"
         STUDENT_EMAIL = "abdulrehman5662423@gmail.com"
         TEACHER_EMAIL = "sikandar.hayat@is.uol.edu.pk"
@@ -37,7 +37,7 @@ pipeline {
                         echo "Running Pre-prod Pipeline: Validating Challenger"
                         sh '. venv/bin/activate && python3 src/train.py --stage pre-prod'
                     } else {
-                        echo "Running Prod Pipeline: Promoting to Champion"
+                        echo "Running Prod Pipeline (Release Tag): Promoting to Champion"
                         sh '. venv/bin/activate && python3 src/train.py --stage prod'
                     }
                 }
@@ -63,9 +63,9 @@ pipeline {
     post {
         success {
             script {
-                def projectName = "Abdul Rehman's MLOps Pipeline (${env.BRANCH_NAME})"
+                def targetName = env.TAG_NAME ? env.TAG_NAME : env.BRANCH_NAME
+                def projectName = "Abdul Rehman's MLOps Pipeline (${targetName})"
                 echo "Pipeline completed successfully. Sending notification email..."
-                // Configure Jenkins Mailer or Email Extension plugin to notify student & teacher
                 emailext (
                     subject: "SUCCESS: ${projectName} Completed Successfully",
                     body: "Hello,\n\nThe pipeline task for ${projectName} has completed successfully.\n\nBest regards,\nMLOps Automation",
@@ -75,7 +75,8 @@ pipeline {
         }
         failure {
             script {
-                def projectName = "Abdul Rehman's MLOps Pipeline (${env.BRANCH_NAME})"
+                def targetName = env.TAG_NAME ? env.TAG_NAME : env.BRANCH_NAME
+                def projectName = "Abdul Rehman's MLOps Pipeline (${targetName})"
                 echo "Pipeline failed. Sending alert email..."
                 emailext (
                     subject: "FAILED: ${projectName} Encountered an Error",
