@@ -69,9 +69,9 @@ pipeline {
                 emailext (
                     subject: "SUCCESS: ${projectName} Completed Successfully",
                     body: "Hello,\n\nThe pipeline task for ${projectName} has completed successfully.\n\nBest regards,\nMLOps Automation",
-                     to: "${env.STUDENT_EMAIL}, ${env.TEACHER_EMAIL}",
+                     to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
                       recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
-                        )
+                 )
             }
         }
         failure {
@@ -82,7 +82,8 @@ pipeline {
                 emailext (
                     subject: "FAILED: ${projectName} Encountered an Error",
                     body: "Hello,\n\nThe pipeline task for ${projectName} has failed during execution. Please check Jenkins logs.\n\nBest regards,\nMLOps Automation",
-                    to: "${env.STUDENT_EMAIL}, ${env.TEACHER_EMAIL}"
+                    to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
+                    recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
                 )
             }
         }
