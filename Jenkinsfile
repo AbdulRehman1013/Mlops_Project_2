@@ -69,8 +69,9 @@ pipeline {
                 emailext (
                     subject: "SUCCESS: ${projectName} Completed Successfully",
                     body: "Hello,\n\nThe pipeline task for ${projectName} has completed successfully.\n\nBest regards,\nMLOps Automation",
-                    to: "${env.STUDENT_EMAIL}, ${env.TEACHER_EMAIL}"
-                )
+                     to: "${env.STUDENT_EMAIL}, ${env.TEACHER_EMAIL}",
+                      recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
+                        )
             }
         }
         failure {
