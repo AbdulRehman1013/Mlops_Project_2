@@ -2,6 +2,7 @@ pipeline {
     agent any
     
     environment {
+        MLFLOW_TRACKING_URI = "http://localhost:5000"
         PYTHONPATH = "${WORKSPACE}/src"
         STUDENT_EMAIL = "abdulrehman5662423@gmail.com"
         TEACHER_EMAIL = "sikandar.hayat@is.uol.edu.pk"
@@ -30,15 +31,16 @@ pipeline {
         stage('Model Training & MLflow Registry') {
             steps {
                 script {
+                    echo "Using MLflow Tracking URI: ${env.MLFLOW_TRACKING_URI}"
                     if (env.BRANCH_NAME == 'dev') {
                         echo "Running Dev Pipeline: Saving as Challenger"
-                        sh '. venv/bin/activate && python3 src/train.py --stage dev'
+                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/train.py --stage dev"
                     } else if (env.BRANCH_NAME == 'main') {
                         echo "Running Pre-prod Pipeline: Validating Challenger"
-                        sh '. venv/bin/activate && python3 src/train.py --stage pre-prod'
+                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/train.py --stage pre-prod"
                     } else {
                         echo "Running Prod Pipeline (Release Tag): Promoting to Champion"
-                        sh '. venv/bin/activate && python3 src/train.py --stage prod'
+                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/train.py --stage prod"
                     }
                 }
             }
@@ -49,11 +51,11 @@ pipeline {
                 script {
                     sh '. venv/bin/activate && pytest tests/test_model.py'
                     if (env.BRANCH_NAME == 'dev') {
-                        sh '. venv/bin/activate && python3 src/evaluate.py Challenger'
+                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/evaluate.py Challenger"
                     } else if (env.BRANCH_NAME == 'main') {
-                        sh '. venv/bin/activate && python3 src/evaluate.py Challenger-pre-test'
+                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/evaluate.py Challenger-pre-test"
                     } else {
-                        sh '. venv/bin/activate && python3 src/evaluate.py Champion'
+                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/evaluate.py Champion"
                     }
                 }
             }
@@ -68,10 +70,10 @@ pipeline {
                 echo "Pipeline completed successfully. Sending notification email..."
                 emailext (
                     subject: "SUCCESS: ${projectName} Completed Successfully",
-                    body: "Hello,\n\nThe pipeline task for ${projectName} has completed successfully.\n\nBest regards,\nMLOps Automation",
-                     to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
-                      recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
-                 )
+                    body: "Hello,\n\nThe pipeline task for ${projectName} has completed successfully.\n\nYou can track and view the model registry (Challenger/Champion) on MLflow UI here: ${env.MLFLOW_TRACKING_URI}\n\nBest regards,\nMlOps Automation",
+                    to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
+                    recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
+                )
             }
         }
         failure {
@@ -81,7 +83,7 @@ pipeline {
                 echo "Pipeline failed. Sending alert email..."
                 emailext (
                     subject: "FAILED: ${projectName} Encountered an Error",
-                    body: "Hello,\n\nThe pipeline task for ${projectName} has failed during execution. Please check Jenkins logs.\n\nBest regards,\nMLOps Automation",
+                    body: "Hello,\n\nThe pipeline task for ${projectName} has failed during execution. Please check Jenkins logs.\n\nMLflow UI: ${env.MLFLOW_TRACKING_URI}\n\nBest regards,\nMLOps Automation",
                     to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
                     recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
                 )
