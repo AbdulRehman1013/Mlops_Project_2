@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        MLFLOW_TRACKING_URI = "http://localhost:5000"
+        MLFLOW_TRACKING_URI = "sqlite:////mnt/c/Users/ASUS/OneDrive/Desktop/MLOPS/project2/mlflow.db"
         PYTHONPATH = "${WORKSPACE}/src"
         STUDENT_EMAIL = "abdulrehman5662423@gmail.com"
         TEACHER_EMAIL = "sikandar.hayat@is.uol.edu.pk"
@@ -70,7 +70,7 @@ pipeline {
                 echo "Pipeline completed successfully. Sending notification email..."
                 emailext (
                     subject: "SUCCESS: ${projectName} Completed Successfully",
-                    body: "Hello,\n\nThe pipeline task for ${projectName} has completed successfully.\n\nYou can track and view the model registry (Challenger/Champion) on MLflow UI here: ${env.MLFLOW_TRACKING_URI}\n\nBest regards,\nMlOps Automation",
+                    body: "Hello,\n\nThe pipeline task for ${projectName} has completed successfully.\n\nYou can track and view the model registry (Challenger/Champion) on MLflow UI here: http://localhost:5000\n\nBest regards,\nMlOps Automation",
                     to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
                     recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
                 )
@@ -83,7 +83,7 @@ pipeline {
                 echo "Pipeline failed. Sending alert email..."
                 emailext (
                     subject: "FAILED: ${projectName} Encountered an Error",
-                    body: "Hello,\n\nThe pipeline task for ${projectName} has failed during execution. Please check Jenkins logs.\n\nMLflow UI: ${env.MLFLOW_TRACKING_URI}\n\nBest regards,\nMLOps Automation",
+                    body: "Hello,\n\nThe pipeline task for ${projectName} has failed during execution. Please check Jenkins logs.\n\nMLflow UI: http://localhost:5000\n\nBest regards,\nMLOps Automation",
                     to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
                     recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
                 )
