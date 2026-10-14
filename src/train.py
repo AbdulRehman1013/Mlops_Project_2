@@ -14,7 +14,8 @@ def train_and_register(pipeline_stage="dev"):
     ROOT_DIR = Path(__file__).resolve().parent.parent
     
     # MLflow Tracking URI set karna
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
+    mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("MLOps_MultiPipeline_Project")
     
     with mlflow.start_run() as run:
