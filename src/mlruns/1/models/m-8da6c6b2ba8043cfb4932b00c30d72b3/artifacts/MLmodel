@@ -1,0 +1,24 @@
+artifact_path: /mnt/c/Users/ASUS/OneDrive/Desktop/MLOPS/project2/src/mlruns/1/models/m-8da6c6b2ba8043cfb4932b00c30d72b3/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.14.4
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.1
+    skops_trusted_types:
+    - sklearn.tree._tree.Tree
+mlflow_version: 3.17.1
+model_id: m-8da6c6b2ba8043cfb4932b00c30d72b3
+model_size_bytes: 7859169
+model_uuid: m-8da6c6b2ba8043cfb4932b00c30d72b3
+prompts: null
+run_id: a33bfc547e194e1090290ea1060d9e8c
+utc_time_created: '2026-10-14 07:34:45.859614'
