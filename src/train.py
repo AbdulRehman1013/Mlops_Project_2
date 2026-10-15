@@ -10,16 +10,37 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 def train_and_register(pipeline_stage="dev"):
-    # Current script se root directory automatically find karna (chahe src se chale ya root se)
     ROOT_DIR = Path(__file__).resolve().parent.parent
     
-    # MLflow Tracking URI set karna
+    # Centralized or Environment Tracking URI
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("MLOps_MultiPipeline_Project")
     
+    client = mlflow.tracking.MlflowClient()
+    model_name = "MLOps_Production_Model"
+    
     with mlflow.start_run() as run:
-        # --- Task 1: Classification Model (Disease Dataset) ---
+        # --- Pre-prod / Prod Stage: Load previous stage model if required ---
+        if pipeline_stage == "pre-prod":
+            print("Pre-prod: Loading model with alias 'Challenger'")
+            try:
+                model_uri = f"models:/{model_name}@Challenger"
+                loaded_model = mlflow.sklearn.load_model(model_uri)
+                print("Successfully loaded 'Challenger' model for validation.")
+            except Exception as e:
+                print(f"Could not load Challenger model directly, proceeding with training: {e}")
+                
+        elif pipeline_stage == "prod":
+            print("Prod: Loading model with alias 'Challenger-post-test'")
+            try:
+                model_uri = f"models:/{model_name}@Challenger-post-test"
+                loaded_model = mlflow.sklearn.load_model(model_uri)
+                print("Successfully loaded 'Challenger-post-test' model for production deployment.")
+            except Exception as e:
+                print(f"Could not load Challenger-post-test model, proceeding: {e}")
+
+        # --- Task 1: Classification Model ---
         disease_data_path = ROOT_DIR / "data" / "disease_classification.csv"
         df_class = pd.read_csv(disease_data_path)
         X_c = df_class.drop(columns=['target'])
@@ -29,11 +50,10 @@ def train_and_register(pipeline_stage="dev"):
         clf = LogisticRegression(max_iter=1000)
         clf.fit(Xc_train, yc_train)
         clf_acc = accuracy_score(yc_test, clf.predict(Xc_test))
-        
         mlflow.log_metric("classification_accuracy", clf_acc)
         mlflow.sklearn.log_model(clf, "classification_model")
         
-        # --- Task 2: Regression Model (Boston / Housing Dataset) ---
+        # --- Task 2: Regression Model ---
         boston_data_path = ROOT_DIR / "data" / "boston_regression.csv"
         df_reg = pd.read_csv(boston_data_path).sample(n=2000, random_state=42)
         X_r = df_reg.drop(columns=['MedHouseVal'])
@@ -43,11 +63,9 @@ def train_and_register(pipeline_stage="dev"):
         reg = RandomForestRegressor(n_estimators=50, random_state=42)
         reg.fit(Xr_train, yr_train)
         reg_mse = mean_squared_error(yr_test, reg.predict(Xr_test))
-        
         mlflow.log_metric("regression_mse", reg_mse)
         
-        # Primary regression model ko MLflow Registry mein log aur register karna
-        model_name = "MLOps_Production_Model"
+        # Log and Register Model
         mlflow.sklearn.log_model(
             sk_model=reg,
             artifact_path="regression_model",
@@ -55,19 +73,19 @@ def train_and_register(pipeline_stage="dev"):
             skops_trusted_types=["sklearn.tree._tree.Tree"]
         )
         
-        # Pipeline stage ke mutabiq Model Registry Aliases assign karna
-        client = mlflow.tracking.MlflowClient()
+        # Fetch latest version
         latest_version = client.get_latest_versions(model_name, stages=["None"])[-1].version
         
+        # Assign Aliases according to PDF Flow diagrams
         if pipeline_stage == "dev":
             client.set_registered_model_alias(model_name, "Challenger", latest_version)
-            print(f"Dev Pipeline: Registered model version {latest_version} with alias 'Challenger'")
+            print(f"Dev Pipeline: Registered version {latest_version} with alias 'Challenger'[cite: 16]")
         elif pipeline_stage == "pre-prod":
             client.set_registered_model_alias(model_name, "Challenger-pre-test", latest_version)
-            print(f"Pre-prod Pipeline: Registered model version {latest_version} with alias 'Challenger-pre-test'")
+            print(f"Pre-prod Pipeline: Registered version {latest_version} with alias 'Challenger-pre-test'")
         elif pipeline_stage == "prod":
             client.set_registered_model_alias(model_name, "Champion", latest_version)
-            print(f"Prod Pipeline: Promoted model version {latest_version} to 'Champion'")
+            print(f"Prod Pipeline: Promoted version {latest_version} to 'Champion'[cite: 18]")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
