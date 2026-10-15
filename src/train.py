@@ -12,8 +12,8 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 def train_and_register(pipeline_stage="dev"):
     ROOT_DIR = Path(__file__).resolve().parent.parent
     
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
-    mlflow.set_artifact_uri("file:///var/lib/jenkins/mlruns")
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:////var/lib/jenkins/mlflow.db")
+
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("MLOps_MultiPipeline_Project")
     
