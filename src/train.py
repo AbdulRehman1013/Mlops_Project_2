@@ -18,7 +18,7 @@ def train_and_register(pipeline_stage="dev"):
     mlflow.set_experiment("MLOps_MultiPipeline_Project")
     
     client = mlflow.tracking.MlflowClient()
-    model_name = "MLOps_Production_Model"
+    model_name = "MLops_Production_Model"
     
     with mlflow.start_run() as run:
         # --- Pre-prod / Prod Stage: Load previous stage model if required ---
@@ -51,7 +51,9 @@ def train_and_register(pipeline_stage="dev"):
         clf.fit(Xc_train, yc_train)
         clf_acc = accuracy_score(yc_test, clf.predict(Xc_test))
         mlflow.log_metric("classification_accuracy", clf_acc)
-        mlflow.sklearn.log_model(clf, "classification_model")
+        
+        # Log classification model without strict environment metadata to prevent WSL permission errors
+        mlflow.sklearn.log_model(clf, "classification_model", pip_requirements=[])
         
         # --- Task 2: Regression Model ---
         boston_data_path = ROOT_DIR / "data" / "boston_regression.csv"
@@ -65,12 +67,12 @@ def train_and_register(pipeline_stage="dev"):
         reg_mse = mean_squared_error(yr_test, reg.predict(Xr_test))
         mlflow.log_metric("regression_mse", reg_mse)
         
-        # Log and Register Model
+        # Log and Register Regression Model safely
         mlflow.sklearn.log_model(
             sk_model=reg,
             artifact_path="regression_model",
             registered_model_name=model_name,
-            skops_trusted_types=["sklearn.tree._tree.Tree"]
+            pip_requirements=[]
         )
         
         # Fetch latest version
@@ -79,13 +81,13 @@ def train_and_register(pipeline_stage="dev"):
         # Assign Aliases according to PDF Flow diagrams
         if pipeline_stage == "dev":
             client.set_registered_model_alias(model_name, "Challenger", latest_version)
-            print(f"Dev Pipeline: Registered version {latest_version} with alias 'Challenger'[cite: 16]")
+            print(f"Dev Pipeline: Registered version {latest_version} with alias 'Challenger'")
         elif pipeline_stage == "pre-prod":
             client.set_registered_model_alias(model_name, "Challenger-pre-test", latest_version)
             print(f"Pre-prod Pipeline: Registered version {latest_version} with alias 'Challenger-pre-test'")
         elif pipeline_stage == "prod":
             client.set_registered_model_alias(model_name, "Champion", latest_version)
-            print(f"Prod Pipeline: Promoted version {latest_version} to 'Champion'[cite: 18]")
+            print(f"Prod Pipeline: Promoted version {latest_version} to 'Champion'")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
