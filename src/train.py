@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REG_MODEL = "MLOps_Production_Model"
 CLS_MODEL = "MLOps_Classification_Model"
 EXP_NAME = "MLOps_MultiPipeline_Project"
+FMT = "cloudpickle"
 
 # stage -> (alias to load, alias to set)
 STAGES = {
@@ -69,7 +70,8 @@ def train_and_register(stage):
 
         for name, (model, art) in models.items():
             info = mlflow.sklearn.log_model(
-                model, name=art, registered_model_name=name, pip_requirements=[]
+                model, name=art, registered_model_name=name,
+                pip_requirements=[], serialization_format=FMT,
             )
             version = info.registered_model_version
             client.set_registered_model_alias(name, set_alias, version)

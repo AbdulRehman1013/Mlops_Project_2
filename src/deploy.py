@@ -13,7 +13,8 @@ def main(alias, env_name):
         if target.exists():
             shutil.rmtree(target)
         target.parent.mkdir(parents=True, exist_ok=True)
-        mlflow.sklearn.save_model(model, str(target))
+        mlflow.sklearn.save_model(model, str(target), pip_requirements=[],
+                                  serialization_format="cloudpickle")
         print(f"Deployed {name}@{alias} -> {target}")
 
 if __name__ == "__main__":
