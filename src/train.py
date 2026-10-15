@@ -1,89 +1,81 @@
-import os
-import argparse
+import os, argparse
 from pathlib import Path
-import mlflow
-import mlflow.sklearn
+import mlflow, mlflow.sklearn
 import pandas as pd
+from mlflow.tracking import MlflowClient
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, mean_squared_error
 
-def train_and_register(pipeline_stage="dev"):
-    ROOT_DIR = Path(__file__).resolve().parent.parent
-    
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:////var/lib/jenkins/mlflow.db")
+ROOT = Path(__file__).resolve().parent.parent
+REG_MODEL = "MLOps_Production_Model"
+CLS_MODEL = "MLOps_Classification_Model"
+EXP_NAME = "MLOps_MultiPipeline_Project"
 
-    mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment("MLOps_MultiPipeline_Project")
-    
-    client = mlflow.tracking.MlflowClient()
-    model_name = "MLOps_Production_Model"
-    
-    with mlflow.start_run() as run:
-        if pipeline_stage == "pre-prod":
-            print("Pre-prod: Loading model with alias 'Challenger'")
-            try:
-                model_uri = f"models:/{model_name}@Challenger"
-                loaded_model = mlflow.sklearn.load_model(model_uri)
-                print("Successfully loaded 'Challenger' model for validation.")
-            except Exception as e:
-                print(f"Warning: Could not load Challenger model, creating fallback: {e}")
-                
-        elif pipeline_stage == "prod":
-            print("Prod: Loading model with alias 'Challenger-post-test'")
-            try:
-                model_uri = f"models:/{model_name}@Challenger-post-test"
-                loaded_model = mlflow.sklearn.load_model(model_uri)
-                print("Successfully loaded 'Challenger-post-test' model.")
-            except Exception as e:
-                print(f"Warning: Could not load Challenger-post-test model: {e}")
+# stage -> (alias to load, alias to set)
+STAGES = {
+    "dev":      (None, "Challenger"),
+    "pre-prod": ("Challenger", "Challenger-pre-test"),
+    "prod":     ("Challenger-post-test", "Champion"),
+}
 
-        disease_data_path = ROOT_DIR / "data" / "disease_classification.csv"
-        df_class = pd.read_csv(disease_data_path)
-        X_c = df_class.drop(columns=['target'])
-        y_c = df_class['target']
-        Xc_train, Xc_test, yc_train, yc_test = train_test_split(X_c, y_c, test_size=0.2, random_state=42)
-        
-        clf = LogisticRegression(max_iter=1000)
-        clf.fit(Xc_train, yc_train)
-        clf_acc = accuracy_score(yc_test, clf.predict(Xc_test))
-        mlflow.log_metric("classification_accuracy", clf_acc)
-        mlflow.sklearn.log_model(clf, "classification_model", pip_requirements=[])
-        
-        boston_data_path = ROOT_DIR / "data" / "boston_regression.csv"
-        df_reg = pd.read_csv(boston_data_path).sample(n=2000, random_state=42)
-        X_r = df_reg.drop(columns=['MedHouseVal'])
-        y_r = df_reg['MedHouseVal']
-        Xr_train, Xr_test, yr_train, yr_test = train_test_split(X_r, y_r, test_size=0.2, random_state=42)
-        
-        reg = RandomForestRegressor(n_estimators=50, random_state=42)
-        reg.fit(Xr_train, yr_train)
-        reg_mse = mean_squared_error(yr_test, reg.predict(Xr_test))
-        mlflow.log_metric("regression_mse", reg_mse)
-        
-        mlflow.sklearn.log_model(
-            sk_model=reg,
-            artifact_path="regression_model",
-            registered_model_name=model_name,
-            pip_requirements=[]
-        )
-        
-        versions = client.get_latest_versions(model_name, stages=["None"])
-        latest_version = versions[-1].version if versions else "1"
-        
-        if pipeline_stage == "dev":
-            client.set_registered_model_alias(model_name, "Challenger", latest_version)
-            print(f"Dev Pipeline: Registered version {latest_version} with alias 'Challenger'")
-        elif pipeline_stage == "pre-prod":
-            client.set_registered_model_alias(model_name, "Challenger-pre-test", latest_version)
-            print(f"Pre-prod Pipeline: Registered version {latest_version} with alias 'Challenger-pre-test'")
-        elif pipeline_stage == "prod":
-            client.set_registered_model_alias(model_name, "Champion", latest_version)
-            print(f"Prod Pipeline: Promoted version {latest_version} to 'Champion'")
+def setup_mlflow():
+    mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+    art_root = Path(os.getenv("MLFLOW_ARTIFACT_ROOT", "/var/lib/jenkins/mlflow/artifacts"))
+    art_root.mkdir(parents=True, exist_ok=True)
+    if mlflow.get_experiment_by_name(EXP_NAME) is None:
+        mlflow.create_experiment(EXP_NAME, artifact_location=art_root.as_uri())
+    mlflow.set_experiment(EXP_NAME)
+
+def train_models():
+    df = pd.read_csv(ROOT / "data" / "disease_classification.csv")
+    X, y = df.drop(columns=["target"]), df["target"]
+    Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=42)
+    lr = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
+    lr.fit(Xtr, ytr)
+    rf_c = RandomForestClassifier(n_estimators=100, random_state=42).fit(Xtr, ytr)
+    lr_acc = accuracy_score(yte, lr.predict(Xte))
+    rf_acc = accuracy_score(yte, rf_c.predict(Xte))
+    mlflow.log_metric("logreg_accuracy", lr_acc)
+    mlflow.log_metric("rf_classifier_accuracy", rf_acc)
+    cls = lr if lr_acc >= rf_acc else rf_c
+    mlflow.log_metric("classification_accuracy", max(lr_acc, rf_acc))
+
+    dr = pd.read_csv(ROOT / "data" / "boston_regression.csv")
+    dr = dr.sample(n=min(2000, len(dr)), random_state=42)
+    Xr, yr = dr.drop(columns=["MedHouseVal"]), dr["MedHouseVal"]
+    Xrtr, Xrte, yrtr, yrte = train_test_split(Xr, yr, test_size=0.2, random_state=42)
+    reg = RandomForestRegressor(n_estimators=50, random_state=42).fit(Xrtr, yrtr)
+    mlflow.log_metric("regression_mse", mean_squared_error(yrte, reg.predict(Xrte)))
+    return {CLS_MODEL: (cls, "classification_model"), REG_MODEL: (reg, "regression_model")}
+
+def train_and_register(stage):
+    setup_mlflow()
+    client = MlflowClient()
+    load_alias, set_alias = STAGES[stage]
+
+    with mlflow.start_run():
+        mlflow.set_tag("pipeline_stage", stage)
+        if stage == "dev":
+            models = train_models()
+        else:
+            models = {}
+            for name, art in [(CLS_MODEL, "classification_model"), (REG_MODEL, "regression_model")]:
+                print(f"{stage}: loading {name}@{load_alias}")
+                models[name] = (mlflow.sklearn.load_model(f"models:/{name}@{load_alias}"), art)
+
+        for name, (model, art) in models.items():
+            info = mlflow.sklearn.log_model(
+                model, name=art, registered_model_name=name, pip_requirements=[]
+            )
+            version = info.registered_model_version
+            client.set_registered_model_alias(name, set_alias, version)
+            print(f"{name} v{version} -> alias '{set_alias}'")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", type=str, default="dev", choices=["dev", "pre-prod", "prod"])
-    args = parser.parse_args()
-    train_and_register(pipeline_stage=args.stage)
+    p = argparse.ArgumentParser()
+    p.add_argument("--stage", default="dev", choices=list(STAGES))
+    train_and_register(p.parse_args().stage)

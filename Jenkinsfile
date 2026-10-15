@@ -1,13 +1,23 @@
+def pipelineInfo() {
+    if (env.TAG_NAME) {
+        return [stage: 'prod', loadAlias: 'Champion', label: env.TAG_NAME]
+    } else if (env.BRANCH_NAME == 'main') {
+        return [stage: 'pre-prod', loadAlias: 'Challenger-pre-test', label: 'main']
+    } else {
+        return [stage: 'dev', loadAlias: 'Challenger', label: env.BRANCH_NAME]
+    }
+}
+
 pipeline {
     agent any
-    
+
     environment {
-        MLFLOW_TRACKING_URI = "sqlite:////mnt/c/Users/ASUS/OneDrive/Desktop/MLOPS/project2/mlflow.db"
-        PYTHONPATH = "${WORKSPACE}/src"
-        STUDENT_EMAIL = "abdulrehman5662423@gmail.com"
-        TEACHER_EMAIL = "sikandar.hayat@is.uol.edu.pk"
+        MLFLOW_TRACKING_URI  = "sqlite:////var/lib/jenkins/mlflow/mlflow.db"
+        MLFLOW_ARTIFACT_ROOT = "/var/lib/jenkins/mlflow/artifacts"
+        PYTHONPATH           = "${WORKSPACE}/src"
+        EMAILS               = "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk"
     }
-    
+
     stages {
         stage('Checkout & Setup') {
             steps {
@@ -20,74 +30,60 @@ pipeline {
                 '''
             }
         }
-        
+
         stage('Data Ingestion') {
             steps {
-                echo "Running data ingestion..."
                 sh '. venv/bin/activate && python3 src/data_ingest.py'
             }
         }
-        
-        stage('Model Training & MLflow Registry') {
+
+        stage('Model Train & Register') {
             steps {
                 script {
-                    echo "Using MLflow Tracking URI: ${env.MLFLOW_TRACKING_URI}"
-                    if (env.BRANCH_NAME == 'dev') {
-                        echo "Running Dev Pipeline: Saving as Challenger"
-                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/train.py --stage dev"
-                    } else if (env.BRANCH_NAME == 'main') {
-                        echo "Running Pre-prod Pipeline: Validating Challenger"
-                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/train.py --stage pre-prod"
-                    } else {
-                        echo "Running Prod Pipeline (Release Tag): Promoting to Champion"
-                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/train.py --stage prod"
-                    }
+                    def info = pipelineInfo()
+                    echo "Running ${info.stage} pipeline (${info.label})"
+                    sh ". venv/bin/activate && python3 src/train.py --stage ${info.stage}"
                 }
             }
         }
-        
-        stage('Model Testing & Evaluation') {
+
+        stage('Model Deploy (MLflow)') {
             steps {
                 script {
+                    def info = pipelineInfo()
+                    def alias = (info.stage == 'dev') ? 'Challenger' : (info.stage == 'pre-prod') ? 'Challenger-pre-test' : 'Champion'
+                    sh ". venv/bin/activate && python3 src/deploy.py ${alias} ${info.stage}"
+                }
+            }
+        }
+
+        stage('Model Testing & Evaluation') {
+            when { expression { return !env.TAG_NAME } }
+            steps {
+                script {
+                    def info = pipelineInfo()
+                    def alias = (info.stage == 'dev') ? 'Challenger' : 'Challenger-pre-test'
                     sh '. venv/bin/activate && pytest tests/test_model.py'
-                    if (env.BRANCH_NAME == 'dev') {
-                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/evaluate.py Challenger"
-                    } else if (env.BRANCH_NAME == 'main') {
-                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/evaluate.py Challenger-pre-test"
-                    } else {
-                        sh ". venv/bin/activate && export MLFLOW_TRACKING_URI=${env.MLFLOW_TRACKING_URI} && python3 src/evaluate.py Champion"
-                    }
+                    sh ". venv/bin/activate && python3 src/evaluate.py ${alias}"
                 }
             }
         }
     }
-    
+
     post {
         success {
-            script {
-                def targetName = env.TAG_NAME ? env.TAG_NAME : env.BRANCH_NAME
-                def projectName = "Abdul Rehman's MLOps Pipeline (${targetName})"
-                echo "Pipeline completed successfully. Sending notification email..."
-                emailext (
-                    subject: "SUCCESS: ${projectName} Completed Successfully",
-                    body: "Hello,\n\nThe pipeline task for ${projectName} has completed successfully.\n\nYou can track and view the model registry (Challenger/Champion) on MLflow UI here: http://localhost:5000\n\nBest regards,\nMlOps Automation",
-                    to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
-                    recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
-                )
-            }
+            emailext(
+                subject: "SUCCESS: MLOps Pipeline (${pipelineInfo().label})",
+                body: "Pipeline ${pipelineInfo().stage} completed successfully.\nBuild: ${env.BUILD_URL}",
+                to: "${EMAILS}"
+            )
         }
         failure {
-            script {
-                def targetName = env.TAG_NAME ? env.TAG_NAME : env.BRANCH_NAME
-                def projectName = "Abdul Rehman's MLOps Pipeline (${targetName})"
-                echo "Pipeline failed. Sending alert email..."
-                emailext (
-                    subject: "FAILED: ${projectName} Encountered an Error",
-                    body: "Hello,\n\nThe pipeline task for ${projectName} has failed during execution. Please check Jenkins logs.\n\nMLflow UI: http://localhost:5000\n\nBest regards,\nMLOps Automation",
-                    to: "abdulrehman5662423@gmail.com, sikandar.hayat@is.uol.edu.pk",
-                    recipientProviders: [[$class: 'CulpritsRecipientProvider'], [$class: 'ListRecipientProvider']]
-                )
-            }
+            emailext(
+                subject: "FAILED: MLOps Pipeline (${pipelineInfo().label})",
+                body: "Pipeline ${pipelineInfo().stage} failed.\nCheck logs: ${env.BUILD_URL}console",
+                to: "${EMAILS}"
+            )
         }
     }
 }
