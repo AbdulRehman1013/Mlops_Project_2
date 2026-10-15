@@ -12,16 +12,14 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 def train_and_register(pipeline_stage="dev"):
     ROOT_DIR = Path(__file__).resolve().parent.parent
     
-    # Centralized or Environment Tracking URI
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("MLOps_MultiPipeline_Project")
     
     client = mlflow.tracking.MlflowClient()
-    model_name = "MLops_Production_Model"
+    model_name = "MLOps_Production_Model"
     
     with mlflow.start_run() as run:
-        # --- Pre-prod / Prod Stage: Load previous stage model if required ---
         if pipeline_stage == "pre-prod":
             print("Pre-prod: Loading model with alias 'Challenger'")
             try:
@@ -29,18 +27,17 @@ def train_and_register(pipeline_stage="dev"):
                 loaded_model = mlflow.sklearn.load_model(model_uri)
                 print("Successfully loaded 'Challenger' model for validation.")
             except Exception as e:
-                print(f"Could not load Challenger model directly, proceeding with training: {e}")
+                print(f"Warning: Could not load Challenger model, creating fallback: {e}")
                 
         elif pipeline_stage == "prod":
             print("Prod: Loading model with alias 'Challenger-post-test'")
             try:
                 model_uri = f"models:/{model_name}@Challenger-post-test"
                 loaded_model = mlflow.sklearn.load_model(model_uri)
-                print("Successfully loaded 'Challenger-post-test' model for production deployment.")
+                print("Successfully loaded 'Challenger-post-test' model.")
             except Exception as e:
-                print(f"Could not load Challenger-post-test model, proceeding: {e}")
+                print(f"Warning: Could not load Challenger-post-test model: {e}")
 
-        # --- Task 1: Classification Model ---
         disease_data_path = ROOT_DIR / "data" / "disease_classification.csv"
         df_class = pd.read_csv(disease_data_path)
         X_c = df_class.drop(columns=['target'])
@@ -51,11 +48,8 @@ def train_and_register(pipeline_stage="dev"):
         clf.fit(Xc_train, yc_train)
         clf_acc = accuracy_score(yc_test, clf.predict(Xc_test))
         mlflow.log_metric("classification_accuracy", clf_acc)
-        
-        # Log classification model without strict environment metadata to prevent WSL permission errors
         mlflow.sklearn.log_model(clf, "classification_model", pip_requirements=[])
         
-        # --- Task 2: Regression Model ---
         boston_data_path = ROOT_DIR / "data" / "boston_regression.csv"
         df_reg = pd.read_csv(boston_data_path).sample(n=2000, random_state=42)
         X_r = df_reg.drop(columns=['MedHouseVal'])
@@ -67,7 +61,6 @@ def train_and_register(pipeline_stage="dev"):
         reg_mse = mean_squared_error(yr_test, reg.predict(Xr_test))
         mlflow.log_metric("regression_mse", reg_mse)
         
-        # Log and Register Regression Model safely
         mlflow.sklearn.log_model(
             sk_model=reg,
             artifact_path="regression_model",
@@ -75,10 +68,9 @@ def train_and_register(pipeline_stage="dev"):
             pip_requirements=[]
         )
         
-        # Fetch latest version
-        latest_version = client.get_latest_versions(model_name, stages=["None"])[-1].version
+        versions = client.get_latest_versions(model_name, stages=["None"])
+        latest_version = versions[-1].version if versions else "1"
         
-        # Assign Aliases according to PDF Flow diagrams
         if pipeline_stage == "dev":
             client.set_registered_model_alias(model_name, "Challenger", latest_version)
             print(f"Dev Pipeline: Registered version {latest_version} with alias 'Challenger'")
